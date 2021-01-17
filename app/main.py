@@ -103,3 +103,4 @@ if __name__ == '__main__':
                       remote_readings['temperature'], remote_readings['humidity'],
                       remote_readings['pressure'], remote_readings['light'],
                       remote_readings['cpuTemperature']))
+        conn.commit()
