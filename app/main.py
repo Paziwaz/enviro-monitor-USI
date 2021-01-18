@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import argparse
+import os
+import secrets
 import sys
 import pause
 from lywsd03mmc import Lywsd03mmcClient
 from pms5003 import PMS5003
-
 try:
     from ltr559 import LTR559
 
@@ -15,6 +16,8 @@ from bme280 import BME280
 import sqlite3
 from sqlite3 import Error
 from datetime import datetime
+from sklearn.linear_model import LinearRegression
+import numpy as np
 
 # BME280 temperature/pressure/humidity sensor
 bme280 = BME280()
@@ -31,7 +34,8 @@ sql_table_scheme = """ CREATE TABLE IF NOT EXISTS readings (
                             humidity real NOT NULL,
                             pressure real NOT NULL,
                             light real NOT NULL,
-                            cputemperature real NOT NULL                
+                            cputemperature real NOT NULL,
+                            realtemperature real NOT NULL               
                         );"""
 
 parser = argparse.ArgumentParser(allow_abbrev=False)
@@ -40,17 +44,18 @@ parser.add_argument("--device", "-d", help="Set the device MAC-Address in format
 args = parser.parse_args()
 
 
-# Warms up the sensors
 def initialize():
+    print("Proceeding with EnviroPlus warm up...")
     for x in range(10):
+        print("Cycle {} out of 10".format(str(x + 1)))
         bme280.get_temperature()
         bme280.get_pressure()
         bme280.get_humidity()
         ltr559.get_lux()
         pause.seconds(1)
+    print("Enviro is now warmed up and ready!")
 
 
-# Takes remote readings from LYWSD03MMC sensor
 def take_readings_remote(client):
     data = client.data
     temperature = float(round(data.temperature, 1))
@@ -58,7 +63,6 @@ def take_readings_remote(client):
     return {'remoteTemperature': temperature, 'remoteHumidity': humidity}
 
 
-# Takes readings
 def take_readings():
     temperature = float(round(bme280.get_temperature(), 1))
     humidity = float(round(bme280.get_humidity(), 1))
@@ -74,33 +78,73 @@ def get_cpu_temperature():
     return {'cpuTemperature': temp}
 
 
-def create_table(conn, create_table_sql):
+def get_xy_values(database):
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    cursor.execute("SELECT remoteTemperature, temperature, cpuTemperature FROM readings")
+    results = cursor.fetchall()
+    conn.close()
+    temperature_correct = []
+    temperature_raw = []
+    temperature_cpu = []
+    for i in results:
+        temperature_correct.append(i[0])
+        temperature_raw.append(i[1])
+        temperature_cpu.append(i[2])
+    x = []
+    for i in range(len(temperature_cpu)):
+        x.append(temperature_cpu[i] - temperature_raw[i])
+    y = list(temperature_correct)
+    conn.close()
+    return np.array(x), np.array(y)
+
+
+def generate_model(database):
+    print("Generating temperature model...")
+    x, y = get_xy_values(database)
+    model = LinearRegression()
+    model.fit(x.reshape(-1, 1), y)
+    print("Model has been successfully generated!")
+    return model
+
+
+def create_table(database, create_table_sql):
+    conn = sqlite3.connect(database)
     try:
         c = conn.cursor()
         c.execute(create_table_sql)
     except Error as e:
         print(e)
+    conn.close()
 
 
 if __name__ == '__main__':
     mac = ""
+    db = "readings.db"
     if args.device:
         mac = args.device
     else:
         print("Please provide your LYWSD03MMC sensor's MAC address using \'-d\' or \'--device\'")
         sys.exit(1)
-    conn = sqlite3.connect("readings.db")
-    create_table(conn, sql_table_scheme)
+    create_table(db, sql_table_scheme)
     client = Lywsd03mmcClient(mac)
+    model = generate_model(db)
     initialize()
+    iteration = 0
     while True:
         remote_readings = take_readings_remote(client)
         remote_readings.update(take_readings())
         remote_readings.update(get_cpu_temperature())
         time = datetime.now().strftime("%B %d, %Y %I:%M%p")
-        conn.execute("INSERT INTO readings VALUES (?,?,?,?,?,?,?,?)",
+        compensated_temperature = float(round(model.predict(remote_readings['temperature']), 1))
+        conn = sqlite3.connect(db)
+        conn.execute("INSERT INTO readings VALUES (?,?,?,?,?,?,?,?,?)",
                      (time, remote_readings['remoteTemperature'], remote_readings['remoteHumidity'],
                       remote_readings['temperature'], remote_readings['humidity'],
                       remote_readings['pressure'], remote_readings['light'],
-                      remote_readings['cpuTemperature']))
+                      remote_readings['cpuTemperature'], compensated_temperature))
         conn.commit()
+        conn.close()
+        iteration += 1
+        if iteration % 360 == 0:
+            model = generate_model(db)
