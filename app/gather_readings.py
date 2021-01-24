@@ -15,7 +15,7 @@ except ImportError:
 from bme280 import BME280
 import sqlite3
 from sqlite3 import Error
-from datetime import datetime
+import time
 from sklearn.linear_model import LinearRegression
 import numpy as np
 
@@ -27,15 +27,14 @@ pms5003 = PMS5003()
 pause.seconds(1)
 
 sql_table_scheme = """ CREATE TABLE IF NOT EXISTS readings (
-                            time datetime NOT NULL,
+                            timestamp numeric NOT NULL,
                             remotetemperature real NOT NULL,
                             remotehumidity real NOT NULL,
                             temperature real NOT NULL,
                             humidity real NOT NULL,
                             pressure real NOT NULL,
                             light real NOT NULL,
-                            cputemperature real NOT NULL,
-                            realtemperature real NOT NULL               
+                            cputemperature real NOT NULL
                         );"""
 
 parser = argparse.ArgumentParser(allow_abbrev=False)
@@ -45,7 +44,7 @@ args = parser.parse_args()
 
 
 def initialize():
-    print("Proceeding with EnviroPlus warm up...")
+    print("Proceeding with EnviroPlus\'s warm up...")
     for x in range(10):
         print("Cycle {} out of 10".format(str(x + 1)))
         bme280.get_temperature()
@@ -128,23 +127,17 @@ if __name__ == '__main__':
         sys.exit(1)
     create_table(db, sql_table_scheme)
     client = Lywsd03mmcClient(mac)
-    model = generate_model(db)
     initialize()
-    iteration = 0
     while True:
         remote_readings = take_readings_remote(client)
         remote_readings.update(take_readings())
         remote_readings.update(get_cpu_temperature())
-        time = datetime.now().strftime("%B %d, %Y %I:%M%p")
-        compensated_temperature = float(round(model.predict(remote_readings['temperature']), 1))
+        timestamp = int(time.time())
         conn = sqlite3.connect(db)
-        conn.execute("INSERT INTO readings VALUES (?,?,?,?,?,?,?,?,?)",
-                     (time, remote_readings['remoteTemperature'], remote_readings['remoteHumidity'],
+        conn.execute("INSERT INTO readings VALUES (?,?,?,?,?,?,?,?)",
+                     (timestamp, remote_readings['remoteTemperature'], remote_readings['remoteHumidity'],
                       remote_readings['temperature'], remote_readings['humidity'],
                       remote_readings['pressure'], remote_readings['light'],
-                      remote_readings['cpuTemperature'], compensated_temperature))
+                      remote_readings['cpuTemperature']))
         conn.commit()
         conn.close()
-        iteration += 1
-        if iteration % 360 == 0:
-            model = generate_model(db)

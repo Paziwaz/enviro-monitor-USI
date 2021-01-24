@@ -27,7 +27,7 @@ def check_auth_code(auth_code, config_path):
 def get_from_db(database, item):
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
-    cursor.execute("SELECT time, {} FROM readings".format(item))
+    cursor.execute("SELECT timestamp, {} FROM readings order by timestamp desc limit 10000".format(item))
     results = cursor.fetchall()
     conn.close()
     return results
@@ -42,10 +42,16 @@ class S(BaseHTTPRequestHandler):
     def do_GET(self):
         logging.info("GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers))
         self._set_response()
+        if self.path.startswith("/predict="):
+            auth_code = self.path.partition("=")[2]
+            if check_auth_code(auth_code, ".config"):
+                # TODO: ML prediction for next 100 readings
+                results = get_from_db("readings.db", "remotetemperature")
+                self.wfile.write(str(results).format(self.path).encode('utf-8'))
         if self.path.startswith("/temperature="):
             auth_code = self.path.partition("=")[2]
             if check_auth_code(auth_code, ".config"):
-                results = get_from_db("readings.db", "realtemperature")
+                results = get_from_db("readings.db", "remotetemperature")
                 self.wfile.write(str(results).format(self.path).encode('utf-8'))
         if self.path.startswith("/humidity="):
             auth_code = self.path.partition("=")[2]
