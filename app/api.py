@@ -42,12 +42,6 @@ class S(BaseHTTPRequestHandler):
     def do_GET(self):
         logging.info("GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers))
         self._set_response()
-        if self.path.startswith("/predict="):
-            auth_code = self.path.partition("=")[2]
-            if check_auth_code(auth_code, ".config"):
-                # TODO: ML prediction for next 100 readings
-                results = get_from_db("readings.db", "remotetemperature")
-                self.wfile.write(str(results).format(self.path).encode('utf-8'))
         if self.path.startswith("/temperature="):
             auth_code = self.path.partition("=")[2]
             if check_auth_code(auth_code, ".config"):
