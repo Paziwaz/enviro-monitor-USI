@@ -8,25 +8,35 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeRegressor
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
 
 
 # HARDCODED FUNCTION
 def decision_tree_prediction():
     conn = sqlite3.connect("readings.db")
-    weather_df = pd.read_sql_query("select timestamp, remotetemperature from readings;", conn)
+    weather_df = pd.read_sql_query("select timestamp, remotetemperature, humidity, pressure from readings;", conn)
     conn.close()
     weather_y = weather_df.pop("remotetemperature")
     weather_X = weather_df
     train_X, test_X, train_y, test_y = train_test_split(weather_X, weather_y, test_size=0.2, random_state=4)
-    regressor = DecisionTreeRegressor(random_state=0)
-    regressor.fit(train_X, train_y)
-    prediction3 = regressor.predict(test_X)
-    np.mean((prediction3 - test_y) ** 2)
-    last_timestamp = weather_X["timestamp"].max()
-    new_timestamps = [last_timestamp + (i * 60) for i in range(1440)]
+    poly = PolynomialFeatures(degree=4)
+    X_poly = poly.fit_transform(train_X)
+    poly.fit(X_poly, train_y)
+    lin2 = LinearRegression()
+    lin2.fit(X_poly, train_y)
+    # regressor = DecisionTreeRegressor(random_state=0)
+    # regressor.fit(train_X, train_y)
+    # y_results = regressor.predict(weather_X.tail(10000))
+    # X_results = weather_X.tail(10000)['timestamp'].tolist()
+    # results = []
+    # for i in range(len(X_results)):
+    #     results.append((X_results[i], y_results[i]))
+    y_results = lin2.predict(poly.fit_transform(weather_X.tail(10000)))
+    X_results = weather_X.tail(10000)['timestamp'].tolist()
     results = []
-    for timestamp in new_timestamps:
-        results.append((new_timestamps, float(regressor.predict(np.array(timestamp).reshape(-1, 1))[0])))
+    for i in range(len(X_results)):
+        results.append((X_results[i], y_results[i]))
     return results
 
 
@@ -65,6 +75,15 @@ class S(BaseHTTPRequestHandler):
     def do_GET(self):
         logging.info("GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers))
         self._set_response()
+        if self.path.startswith("/check="):
+            auth_code = self.path.partition("=")[2]
+            if check_auth_code(auth_code, ".config"):
+                self.wfile.write("1".encode('utf-8'))
+        if self.path.startswith("/prediction="):
+            auth_code = self.path.partition("=")[2]
+            if check_auth_code(auth_code, ".config"):
+                results = decision_tree_prediction()
+                self.wfile.write(str(results).format(self.path).encode('utf-8'))
         if self.path.startswith("/temperature="):
             auth_code = self.path.partition("=")[2]
             if check_auth_code(auth_code, ".config"):

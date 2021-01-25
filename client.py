@@ -45,7 +45,7 @@ if __name__ == '__main__':
               "Wilgotność (H)\n"
               "Ciśnienie (P)\n"
               "Światło (L)\n"
-              "Prognoza temperatury (F)"
+              "Prognoza temperatury (F)\n"
               "Wyjdź przy pomocy (Q)")
         typed_option = input("Wybierz opcję: ")
         results = []
