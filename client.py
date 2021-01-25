@@ -34,9 +34,14 @@ def generate_graph(data, ylabel):
 
 if __name__ == '__main__':
     auth_code = ""
-    if args.auth:
+    try:
+        is_auth_correct = requests.get("http://{}:{}/{}={}".format("rpi01e", "8080", "check", args.auth)).text == "1"
+    except requests.exceptions.ConnectionError:
+        is_auth_correct = False
+    if args.auth and is_auth_correct:
         auth_code = args.auth
     else:
+        print("Podany kod jest niepoprawny lub serwer jest nieosiągalny.")
         print("Proszę podaj wygenerowany przez server auth_code przy pomocy \'-a\' albo \'--auth\'")
         sys.exit(1)
     while True:
@@ -45,7 +50,7 @@ if __name__ == '__main__':
               "Wilgotność (H)\n"
               "Ciśnienie (P)\n"
               "Światło (L)\n"
-              "Prognoza temperatury (F)\n"
+              "Przetworzona temperatura (F)\n"
               "Wyjdź przy pomocy (Q)")
         typed_option = input("Wybierz opcję: ")
         results = []
