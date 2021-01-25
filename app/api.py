@@ -4,7 +4,30 @@ import logging
 import sqlite3
 import os
 import secrets
-import sys
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeRegressor
+
+
+# HARDCODED FUNCTION
+def decision_tree_prediction():
+    conn = sqlite3.connect("readings.db")
+    weather_df = pd.read_sql_query("select timestamp, remotetemperature from readings;", conn)
+    conn.close()
+    weather_y = weather_df.pop("remotetemperature")
+    weather_X = weather_df
+    train_X, test_X, train_y, test_y = train_test_split(weather_X, weather_y, test_size=0.2, random_state=4)
+    regressor = DecisionTreeRegressor(random_state=0)
+    regressor.fit(train_X, train_y)
+    prediction3 = regressor.predict(test_X)
+    np.mean((prediction3 - test_y) ** 2)
+    last_timestamp = weather_X["timestamp"].max()
+    new_timestamps = [last_timestamp + (i * 60) for i in range(1440)]
+    results = []
+    for timestamp in new_timestamps:
+        results.append((new_timestamps, float(regressor.predict(np.array(timestamp).reshape(-1, 1))[0])))
+    return results
 
 
 def generate_auth_code(config_path):

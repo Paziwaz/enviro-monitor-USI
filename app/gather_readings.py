@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import os
-import secrets
 import sys
 import pause
 from lywsd03mmc import Lywsd03mmcClient
