@@ -10,33 +10,34 @@ from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
+from keras.models import load_model
+from sklearn.preprocessing import MinMaxScaler
 
 
-# HARDCODED FUNCTION
-def decision_tree_prediction():
+def get_from_model(filename):
     conn = sqlite3.connect("readings.db")
-    weather_df = pd.read_sql_query("select timestamp, remotetemperature, humidity, pressure from readings;", conn)
+    dataset = pd.read_sql_query("select timestamp, remotetemperature from readings;", conn)
     conn.close()
-    weather_y = weather_df.pop("remotetemperature")
-    weather_X = weather_df
-    train_X, test_X, train_y, test_y = train_test_split(weather_X, weather_y, test_size=0.2, random_state=4)
-    poly = PolynomialFeatures(degree=4)
-    X_poly = poly.fit_transform(train_X)
-    poly.fit(X_poly, train_y)
-    lin2 = LinearRegression()
-    lin2.fit(X_poly, train_y)
-    # regressor = DecisionTreeRegressor(random_state=0)
-    # regressor.fit(train_X, train_y)
-    # y_results = regressor.predict(weather_X.tail(10000))
-    # X_results = weather_X.tail(10000)['timestamp'].tolist()
-    # results = []
-    # for i in range(len(X_results)):
-    #     results.append((X_results[i], y_results[i]))
-    y_results = lin2.predict(poly.fit_transform(weather_X.tail(10000)))
-    X_results = weather_X.tail(10000)['timestamp'].tolist()
+    model = load_model(filename)
+    dataset = dataset[dataset.index % 15 == 0]
+    dataset = dataset.dropna(subset=["remotetemperature"])
+    dataset = dataset.reset_index(drop=True)
+    resultdataset = dataset.iloc[:, 1:2].values
+    sc = MinMaxScaler(feature_range=(0, 1))
+    sc.fit_transform(resultdataset)
+    prediction = sc.transform(resultdataset)
+    prediction = np.array(prediction)
+    prediction = np.reshape(prediction, (prediction.shape[1], prediction.shape[0], 1))
+    predicted_temperatures = model.predict(prediction)
+    predicted_temperatures = sc.inverse_transform(predicted_temperatures)
+    predicted_temperatures = np.reshape(predicted_temperatures, (predicted_temperatures.shape[1], predicted_temperatures.shape[0]))
+    y_results = predicted_temperatures.tolist()
+    last_timestamp = dataset.iloc[-1:, 0:1].values.tolist()[0][0]
+    mean_timestamp_difference = int(dataset.iloc[:, 0:1].diff().mean().values.tolist()[0])
+    X_results = [last_timestamp + mean_timestamp_difference * i for i in range(1, 11)]
     results = []
     for i in range(len(X_results)):
-        results.append((X_results[i], y_results[i]))
+        results.append((X_results[i], y_results[i][0]))
     return results
 
 
@@ -82,7 +83,7 @@ class S(BaseHTTPRequestHandler):
         if self.path.startswith("/prediction="):
             auth_code = self.path.partition("=")[2]
             if check_auth_code(auth_code, ".config"):
-                results = decision_tree_prediction()
+                results = get_from_model("model.hdf5")
                 self.wfile.write(str(results).format(self.path).encode('utf-8'))
         if self.path.startswith("/temperature="):
             auth_code = self.path.partition("=")[2]
