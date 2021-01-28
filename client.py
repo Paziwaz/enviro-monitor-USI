@@ -13,6 +13,8 @@ parser.add_argument("--auth", "-a", help="Set the authentication code for a devi
 args = parser.parse_args()
 
 
+
+
 def get_readings(address, port, type, auth_code):
     response = requests.get("http://{}:{}/{}={}".format(address, port, type, auth_code)).text
     updated_response = ast.literal_eval(response)
